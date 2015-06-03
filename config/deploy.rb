@@ -1,27 +1,39 @@
 require 'mina/bundler'
 require 'mina/rails'
 require 'mina/git'
-require 'mina/rvm'    # for rvm support. (http://rvm.io)
+require 'mina/rvm'
+
+
+
+set :development_server              , '104.239.200.81'
+set :development_server_user_account , 'dummy_app'
+
+set :production_server               , '104.239.200.812'
+set :production_server_user_account  , 'dummy_app'
+
+set :repository, 'https://sergiorivas:aqsw123@github.com/sergiorivas/dummmy_deploy_app.git'
+
+set :restart_on_deploy?, true
+set :run_migrations_on_deploy?, false
+set :precompile_assets_on_deploy?, false
+
+
+
+
+
 
 ENVIRONMENTS_ALLOWED = ["development", "production"]
 
 
-set :develoment_server, '104.239.200.81'
-set :develoment_server_user_account, 'dummy_app'
-
-set :production_server, '104.239.200.81'
-set :production_server_user_account, 'dummy_app'
-
-set :repository, 'https://sergiorivas:aqsw123@github.com/sergiorivas/dummmy_deploy_app.git'
-
 task :set_default_values do
-  set :deploy_to, '.'
+  set :deploy_to, '-'
   set :branch, 'master'
   set :term_mode, nil
+  set :shared_paths, ['config/database.yml', 'log']
 end
 
 task :environment do
-  # invoke :'rvm:use[ruby-1.9.3-p125@default]'
+  invoke :'rvm:use[@global]'
 end
 
 task :verify_environment_argument do 
@@ -37,10 +49,19 @@ task :verify_environment_argument do
     error "You must to specify an valid environment: development or production"
     exit 1
   end  
+
+  if environment_arg == "production"
+    set :domain    , production_server
+    set :user      , production_server_user_account
+  elsif environment_arg == "development"
+    set :domain, development_server
+    set :user  , development_server_user_account
+  end
+  set :deploy_to , "/home/#{user}"
+
 end
 
 task :verify_deploy_arguments do 
-
 
   branch_arg = ARGV[2]
   if branch_arg
@@ -49,7 +70,7 @@ task :verify_deploy_arguments do
     set :branch, "master"
   end
 
-  commit_arg = ARGV[2]
+  commit_arg = ARGV[3]
   if commit_arg
     set :commit, commit_arg
   end
@@ -68,10 +89,27 @@ task :setup => [:set_default_values, :verify_environment_argument, :environment]
 end
 
 desc "Deploys the current version to the server."
-
 task :deploy => [:set_default_values, :verify_environment_argument, :verify_deploy_arguments, :environment] do 
+  
+  deploy do
+    invoke :'git:clone'
+    invoke :'deploy:link_shared_paths'
+    invoke :'bundle:install'
+    
+    if run_migrations_on_deploy?
+      invoke :'rails:db_migrate'
+    end
+    
+    if precompile_assets_on_deploy?
+      invoke :'rails:assets_precompile'
+    end
+    invoke :'deploy:cleanup'
 
-  puts commit
+    to :launch do
+      queue "mkdir -p #{deploy_to}/#{current_path}/tmp/"
+      queue "touch #{deploy_to}/#{current_path}/tmp/restart.txt"
+    end
+  end
   
   
 end
