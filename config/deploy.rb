@@ -3,7 +3,7 @@ require 'mina/rails'
 require 'mina/git'
 require 'mina/rvm'
 
-
+# ======================== EDIT FROM HERE ======================
 
 set :development_server              , '104.239.200.81'
 set :development_server_user_account , 'dummy_app'
@@ -17,10 +17,7 @@ set :restart_on_deploy?, true
 set :run_migrations_on_deploy?, false
 set :precompile_assets_on_deploy?, false
 
-
-
-
-
+# ======================== UNTIL HERE ===========================
 
 ENVIRONMENTS_ALLOWED = ["development", "production"]
 
@@ -58,6 +55,7 @@ task :verify_environment_argument do
     set :user  , development_server_user_account
   end
   set :deploy_to , "/home/#{user}"
+  set :app_tag, "minarun --> #{deploy_to}"
 
 end
 
@@ -85,7 +83,17 @@ task :setup => [:set_default_values, :verify_environment_argument, :environment]
   queue! %[chmod g+rx,u+rwx "#{deploy_to}/#{shared_path}/config"]
 
   queue! %[touch "#{deploy_to}/#{shared_path}/config/database.yml"]
-  queue  %[echo "-----> Be sure to edit '#{deploy_to}/#{shared_path}/config/database.yml'."]
+  queue! %[touch "#{deploy_to}/#{shared_path}/config/database.yml"]
+  
+  invoke :edit_database_yml
+end
+
+task :edit_database_yml => [:set_default_values, :verify_environment_argument, :environment] do
+  queue  %[echo "-----> Prepare '#{deploy_to}/#{shared_path}/config/database.yml'."]
+  queue  %[echo "-----> Prepare '#{deploy_to}/#{shared_path}/config/database.yml'."]
+  queue  %[echo "Please copy the content of you database.yml file. Press enter to continue"]
+  queue  %[read]
+  queue  %[nano #{deploy_to}/#{shared_path}/config/database.yml]
 end
 
 desc "Deploys the current version to the server."
@@ -108,39 +116,46 @@ task :deploy => [:set_default_values, :verify_environment_argument, :verify_depl
     to :launch do
       queue "mkdir -p #{deploy_to}/#{current_path}/tmp/"
       queue "touch #{deploy_to}/#{current_path}/tmp/restart.txt"
+      invoke :restart
     end
   end
   
   
 end
 
+desc "Start the server"
+task :start => [:set_default_values, :verify_environment_argument, :environment] do
+  queue! %{
+    cd #{deploy_to}/current
+    bundle exec puma -C config/puma.rb -d --tag '#{app_tag}'
+  }
+end
 
-#set :shared_paths, ['config/database.yml', 'log']
+task :trystart => [:set_default_values, :verify_environment_argument, :environment] do
+  queue! %{
+    cd #{deploy_to}/current
+    bundle exec puma -C config/puma.rb --tag '#{app_tag}'
+  }
+end
 
-# task :deploy => :environment do
-#   to :before_hook do
-#     # Put things to run locally before ssh
-#   end
-#   deploy do
-#     # Put things that will set up an empty directory into a fully set-up
-#     # instance of your project.
-#     invoke :'git:clone'
-# #    invoke :'deploy:link_shared_paths'
-# #    invoke :'bundle:install'
-# #    invoke :'rails:db_migrate'
-# #    invoke :'rails:assets_precompile'
-#  #   invoke :'deploy:cleanup'
+desc "Stop the server"
+task :stop => [:set_default_values, :verify_environment_argument, :environment] do
+  queue %{
+    ps -ef | grep puma | grep '#{app_tag}' | grep -v grep | awk '{print $2;}' | xargs kill -9
+  }
+end
 
-#     to :launch do
-#       queue "mkdir -p #{deploy_to}/#{current_path}/tmp/"
-#       queue "touch #{deploy_to}/#{current_path}/tmp/restart.txt"
-#     end
-#   end
-# end
-# For help in making your deploy script, see the Mina documentation:
-#
-#  - http://nadarei.co/mina
-#  - http://nadarei.co/mina/tasks
-#  - http://nadarei.co/mina/settings
-#  - http://nadarei.co/mina/helpers
+desc "Restart the server"
+task :restart => [:set_default_values, :verify_environment_argument, :environment] do
+  invoke "stop"
+  invoke "start"
+end
 
+desc "Status"
+task :status => [:set_default_values, :verify_environment_argument, :environment] do
+  queue %{
+    echo 
+    test -n "`ps -ef | grep puma | grep '#{app_tag}' | grep -v grep | awk '{print $2;}'`" && echo "Server is running" || echo "Server is stopped";
+    echo
+  }
+end
